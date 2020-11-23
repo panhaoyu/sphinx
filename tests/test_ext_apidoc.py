@@ -8,6 +8,8 @@
     :license: BSD, see LICENSE for details.
 """
 
+import os
+import tempfile
 from collections import namedtuple
 
 import pytest
@@ -637,3 +639,43 @@ def test_namespace_package_file(tempdir):
                        "   :members:\n"
                        "   :undoc-members:\n"
                        "   :show-inheritance:\n")
+
+
+def test_utf8_template():
+    TEMPLATE = 'There are some chinese characters below.\n这是一行中文字符\n'
+
+    # Firstly create three temp directories for template, python source, rst destination directories.
+    with tempfile.TemporaryDirectory() as template_dir:
+        with tempfile.TemporaryDirectory() as src_dir:
+            with tempfile.TemporaryDirectory() as dst_dir:
+                # Write a module template rst_t file, use utf-8 encoding.
+                # Here I make sure that the template is utf-8.
+                with open(os.path.join(template_dir, 'module.rst_t'), mode='w', encoding='utf-8') as f:
+                    f.write(TEMPLATE)
+
+                # Create a python file in python source directory.
+                with open(os.path.join(src_dir, 'main.py'), mode='w', encoding='utf-8') as f:
+                    f.write('import os\ndef test():\n    print(123)')
+
+                # Use apidoc to generate rst file, and the file generated successfully.
+                apidoc_main(['-o', dst_dir, '-t', template_dir, src_dir])
+                assert os.path.exists(os.path.join(dst_dir, 'main.rst'))
+
+                # Read the file with utf-8 encoding, but it not work!
+                # That's because it is not utf-8 encoding at all!
+                with pytest.raises(UnicodeError, match="'utf-8' codec can't decode"):
+                    with open(os.path.join(dst_dir, 'main.rst'), mode='r', encoding='utf-8') as f:
+                        print(f.read())
+
+                # Read the file with gbk encoding, and it work!
+                with open(os.path.join(dst_dir, 'main.rst'), mode='r', encoding='gbk') as f:
+                    content = f.read()
+                    assert content == TEMPLATE[:-1]
+
+                # That is to say, on my computer, utf-8 is not default encoding.
+                # My computer is windows 10 and I'm in China.
+                # So, `with open('a.txt', w)` will run as `with open('a.txt', mode='w', encoding='gbk')`.
+                # In such system, we should explicitly specify `encoding='utf-8'` to use utf-8.
+
+                # In fact, when we chinese learn python file IO,
+                # the first thing is to be taught that always use `encoding='utf-8'` in python world.
